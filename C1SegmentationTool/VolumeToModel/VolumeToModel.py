@@ -82,27 +82,27 @@ class VolumeToModelWidget(ScriptedLoadableModuleWidget):
 
 
       self.thresholdminInput = qt.QLineEdit()
-      self.thresholdminInput.toolTip = "Input the number of iterations to be performed"
-      self.thresholdminInput.text = "150"
+      self.thresholdminInput.toolTip = "Input minimum thershold value"
+      self.thresholdminInput.text = "150.00"
       self.threshold_min = float(self.thresholdminInput.text)
       layout_main.addRow("Min Threshold: ", self.thresholdminInput)
 
       self.thresholdmaxInput = qt.QLineEdit()
-      self.thresholdmaxInput.toolTip = "Input the number of iterations to be performed"
-      self.thresholdmaxInput.text = "150"
+      self.thresholdmaxInput.toolTip = "Input maximum thershold value"
+      self.thresholdmaxInput.text = "2034.00"
       self.threshold_max = float(self.thresholdmaxInput.text)
       layout_main.addRow("Max Threshold: ", self.thresholdmaxInput)
 
 
       self.holeFillInput = qt.QLineEdit()
-      self.holeFillInput.toolTip = "Input the number of iterations to be performed"
+      self.holeFillInput.toolTip = "Input size of hole to be filled"
       self.holeFillInput.text = "4.00"
       self.holeFill = float(self.holeFillInput.text)
       layout_main.addRow("Hole Fill Kernel Size(mm): ", self.holeFillInput)
 
 
       self.gaussianInput = qt.QLineEdit()
-      self.gaussianInput.toolTip = "Input the number of iterations to be performed"
+      self.gaussianInput.toolTip = "Input the kernal size for gaussian filter"
       self.gaussianInput.text = "3.00"
       self.gaussian = float(self.gaussianInput.text)
       layout_main.addRow("Gaussian Kernel Size(mm): ", self.gaussianInput)
@@ -163,9 +163,10 @@ class VolumeToModelLogic(ScriptedLoadableModuleLogic):
         
         for node in range(self.clippedListWidget.count):
             clippedVol = self.clippedListWidget.item(node).text()
-            self.clippedNameList.append(clippedVol)
+            self.clippedNameList.append(clippedVol)#?
             clippedVolNode = slicer.util.getNode(clippedVol)
             self.clippedList.append(clippedVolNode)
+            
             segNode = self.addSegmentationNodes(clippedVolNode, clippedVol)
             self.segmentationList.append(segNode)        
 
@@ -175,16 +176,53 @@ class VolumeToModelLogic(ScriptedLoadableModuleLogic):
         segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
         segmentationNode.CreateDefaultDisplayNodes() # only needed for display
         segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volume)
-        addedSegmentID = segmentationNode.GetSegmentation().AddEmptySegment(str(name) + "_C1")
+        self.addedSegmentID = segmentationNode.GetSegmentation().AddEmptySegment(str(name) + "_C1")
         return segmentationNode
-    
+  
+  def extractPolyData(self, inputSegmentation = None, outName = ""):
+      
+      inputSegmentation.CreateClosedSurfaceRepresentation()
+      surfaceMesh = inputSegmentation.GetClosedSurfaceRepresentation(inputSegmentation.GetSegmentation().GetNthSegmentID(0))
+      normals = vtk.vtkPolyDataNormals()
+      normals.AutoOrientNormalsOn()
+      normals.ConsistencyOn()
+      normals.SetInputData(surfaceMesh)
+      normals.Update()
+      surfaceMesh = normals.GetOutput()
+      
+      # write to file
+      tmp_path = 'd:/tmpExtractedOutput.vtk'
+      writer = vtk.vtkPolyDataWriter()
+      writer.SetInputData(surfaceMesh)
+      writer.SetFileName(tmp_path)
+      writer.Write()
+      
+      # load model from file
+      if not os.path.isfile(tmp_path):
+        print "Cannot find tmp extracted model path: ", tmp_path
+        return None
+      self.removeNodeIfExists(outName)
+      success, extractedModel = slicer.util.loadNodeFromFile(tmp_path, 'ModelFile', {}, True)
+      os.remove(tmp_path)
+      if not success:
+        print "Cannot load clipped model from path: ", tmp_path
+        return None
+      extractedModel.SetName(outName)
+      return extractedModel
+  
+  def removeNodeIfExists(self, nodeName):
+      node = slicer.util.getNode(nodeName)
+      if node:
+        slicer.mrmlScene.RemoveNode(node)
+          
   def run(self):
         #creates list  that contains clipped volume and segmentation nodes 
         self.pair()
         
         #zips the lists so they can be used for the for loop
         nodePair = zip(self.clippedList, self.segmentationList)
-        
+        writer = vtk.vtkPolyDataWriter()
+        index = 3
         for volume, segmentation in nodePair:
             # Create segment editor to get access to effects
             segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
@@ -206,20 +244,85 @@ class VolumeToModelLogic(ScriptedLoadableModuleLogic):
             effect = segmentEditorWidget.activeEffect()
             effect.setParameter("Operation", "KEEP_LARGEST_ISLAND")            
             effect.self().onApply()
+			
+	    #Erode
+            segmentEditorWidget.setActiveEffectByName("Margin")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("MarginSizeMm", -1.00)            
+            effect.self().onApply()
+            
+            #Erode
+            segmentEditorWidget.setActiveEffectByName("Margin")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("MarginSizeMm", -1.00)            
+            effect.self().onApply()
+            
+            # Islands
+            segmentEditorWidget.setActiveEffectByName("Islands")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("Operation", "KEEP_LARGEST_ISLAND")            
+            effect.self().onApply()
+			
+	    #Dialate
+            segmentEditorWidget.setActiveEffectByName("Margin")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("MarginSizeMm", 1.00)            
+            effect.self().onApply()
+            
+            #Dialate
+            segmentEditorWidget.setActiveEffectByName("Margin")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("MarginSizeMm", 1.00)            
+            effect.self().onApply()
+            
+            #HoleFilling
+            segmentEditorWidget.setActiveEffectByName("Smoothing")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("SmoothingMethod", "CLOSING")
+            effect.setParameter("KernalSizeMm", self.holeFill)
+            effect.self().onApply()
             
             # Smoothing
             segmentEditorWidget.setActiveEffectByName("Smoothing")
             effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("SmoothingMethod", "MEDIAN")
+            effect.setParameter("KernelSizeMm", 3)
+            effect.self().onApply()
+            '''
+            # Smoothing
+            segmentEditorWidget.setActiveEffectByName("Smoothing")
+            effect = segmentEditorWidget.activeEffect()
             effect.setParameter("SmoothingMethod", "GAUSSIAN")
-            effect.setParameter("GaussianStandardDeviationMm", 4)
+            effect.setParameter("GaussianStandardDeviationMm", self.gaussian)
+            effect.self().onApply()
+            '''
+            # Islands
+            segmentEditorWidget.setActiveEffectByName("Islands")
+            effect = segmentEditorWidget.activeEffect()
+            effect.setParameter("Operation", "KEEP_LARGEST_ISLAND")            
             effect.self().onApply()
             
-            # Clean up
-            segmentEditorWidget = None
-            slicer.mrmlScene.RemoveNode(segmentEditorNode)
+            outName = str(index).zfill(2) + "_C1model"
+            model = self.extractPolyData(inputSegmentation=segmentation,outName=outName)
+            outFileName = "d:/" + str(index).zfill(2) + "_C1model.vtk"
+            slicer.util.saveNode(model, outFileName, {'fileType':'ModelFile'})
+
+
             
-            # Make segmentation results visible in 3D
-            segmentation.CreateClosedSurfaceRepresentation()
+            
+			
+            
+            # # Clean up
+            # segmentEditorWidget = None
+            # slicer.mrmlScene.RemoveNode(segmentEditorNode)
+            
+            # # Make segmentation results visible in 3D
+            
+            
+            index += 1
+	 		
+			
+			
         return True
 
 class ModelSelector():

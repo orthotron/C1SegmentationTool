@@ -200,8 +200,8 @@ class CreateROILogic(ScriptedLoadableModuleLogic):
         z = f7[2]
 
         xRad = (abs(f2[0]-f1[0]))/2
-        yRad = ((abs(f7[1]-f1[1]))/2) + 3
-        zRad = (abs(f5[2]-f4[2]))/2
+        yRad = ((abs(f7[1]-f1[1]))/2)
+        zRad = (abs(f5[2]-f4[2]))/2 + 2
 
         return [x,y,z], [xRad, yRad, zRad]
 
