@@ -130,10 +130,11 @@ class FiducialTransformLogic(ScriptedLoadableModuleLogic):
         yAxis = pcAc / np.linalg.norm(pcAc)
         # Lateral axis
         acIhDir = rtp - ltp
-        xAxis = np.cross(yAxis, acIhDir)
-        xAxis /= np.linalg.norm(xAxis)
-        # Rostrocaudal axis
+        xAxis = acIhDir / np.linalg.norm(acIhDir)
         zAxis = np.cross(xAxis, yAxis)
+        zAxis /= np.linalg.norm(zAxis)
+        # Rostrocaudal axis
+        yAxis = np.cross(zAxis, xAxis)
         # Rotation matrix
         rotation = np.vstack([xAxis, yAxis, zAxis])
         # AC in rotated space
