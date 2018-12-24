@@ -22,6 +22,8 @@ include(${Slicer_USE_FILE})
 add_subdirectory(CreateROI)
 add_subdirectory(VolumeClip)
 add_subdirectory(VolumeToModel)
+add_subdirectory(DenseCorrespondence)
+add_subdirectory(DenseCorrespondenceFid)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
